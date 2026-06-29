@@ -1,4 +1,5 @@
-# Fetches articles from the Entrackr RSS feed and filters for funding announcements.
+# Fetches articles from the Entrackr RSS feed and filters for funding announcements
+# using a multi-signal weighted classifier.
 
 import re
 import requests
@@ -25,24 +26,17 @@ FEED_TIMEOUT_SECONDS = 10
 # Identifies this scraper to the server.
 # Including a User-Agent is good HTTP client practice: some servers treat
 # unidentified requests less reliably, and a descriptive label makes our
-# traffic easy to identify in server logs if Entrackr ever contacts us.
+# traffic identifiable in server logs.
 HTTP_HEADERS = {
     "User-Agent": "IndiaVentureReview/1.0 (+https://github.com/shuntzhere/india-venture-review)"
 }
 
 # ---------------------------------------------------------------------------
-# Funding keyword list
+# Signal 1 — Funding keywords
 # ---------------------------------------------------------------------------
-# Matched against article titles using whole-word matching (not substring).
-# See is_funding_article() for the matching strategy.
-# Add or remove keywords here to tune filtering without touching any other code.
-#
-# Deliberately excluded:
-#   "investment" — too broad; matches "investment banking", "divestment", etc.
-#                  Actual funding events using this word almost always also
-#                  contain "raises", "funding", or "round", which are covered.
-#                  Keeping it caused false positives in validation (e.g. Zerodha
-#                  seeking a merchant banking licence was accepted incorrectly).
+# Matched against article titles using whole-word regex matching.
+# Deliberately excluded: "investment" — too broad; matched "investment banking"
+# and corporate deals in Step 3.1 validation (see Step 3.1 notes).
 
 FUNDING_KEYWORDS = [
     "raises",
@@ -57,17 +51,69 @@ FUNDING_KEYWORDS = [
     "venture",
 ]
 
+# ---------------------------------------------------------------------------
+# Signal 2 — Funding amount patterns
+# ---------------------------------------------------------------------------
+# Covers the major currency formats used in Indian startup reporting.
+# Applied to both title and the first 500 characters of article content.
+# "undisclosed" is intentionally not treated as a funding amount — an
+# undisclosed amount provides no evidence of a specific transaction.
+
+FUNDING_AMOUNT_PATTERNS = [
+    # Dollar amounts: $3.2 Mn, $500K, $5M, $5 million
+    r'\$\s*[\d,]+(?:\.\d+)?\s*(?:Mn|Bn|M|B|K|million|billion|thousand)?',
+    # Rupee with prefix: Rs 150 Cr, Rs. 10 crore, Rs 5 Lakh
+    r'\bRs\.?\s*[\d,]+(?:\.\d+)?\s*(?:Cr|crore|Mn|Lakh|lakh|million)?\b',
+    # Unicode rupee symbol: ₹50 crore
+    r'₹\s*[\d,]+(?:\.\d+)?\s*(?:Cr|crore|Mn|Lakh|lakh|million)?',
+    # Currency code prefix: USD 5 million, INR 10 crore
+    r'\b(?:USD|INR)\s*[\d,]+(?:\.\d+)?\s*(?:Mn|M|Bn|B|K|million|billion|crore|Cr|Lakh|lakh)?\b',
+]
+
+# ---------------------------------------------------------------------------
+# Signal 3 — Investor phrase patterns
+# ---------------------------------------------------------------------------
+# Phrases that indicate active investor participation in a funding event.
+# Applied to both title and the first 500 characters of article content.
+
+INVESTOR_PHRASE_PATTERNS = [
+    r'\bled\s+by\b',
+    r'\bbacked\s+by\b',
+    r'\bfrom\s+investors\b',
+    r'\bparticipated\s+by\b',
+]
+
+# ---------------------------------------------------------------------------
+# Signal registry and classifier threshold
+# ---------------------------------------------------------------------------
+# Each entry is (signal_name, detector_function, weight).
+#
+# To add a new signal: implement a detector function and append it here.
+# Nothing else in the module needs to change.
+#
+# Weight and threshold rationale:
+#   funding_keyword  +3  Sole sufficient signal. A title containing "raises",
+#                        "bags", "round" etc. is almost always a funding event.
+#   funding_amount   +2  Strong corroborating evidence, but not sufficient alone.
+#                        A revenue article ("posts $781 Mn revenue") has an amount
+#                        but no keyword — score 2 falls below threshold 3, so it is
+#                        correctly rejected. This avoids the main false-positive class.
+#   investor_phrase  +1  Weak corroborating signal. "led by" alone is not enough.
+#   threshold        3   Keyword alone is sufficient (3 ≥ 3). Amount alone is not
+#                        (2 < 3). Investor phrase alone is not (1 < 3). Two weaker
+#                        signals together (amount + investor = 3) are sufficient,
+#                        which is intentional: a non-keyword article that names both
+#                        an amount and an investor is very likely a funding event.
+
+ACCEPTANCE_THRESHOLD = 3
 
 # ---------------------------------------------------------------------------
 # HTML text extractor
 # ---------------------------------------------------------------------------
-# RSS feed content often contains HTML markup. We clean it here, before
-# returning raw_content, so the parser in Step 4 receives plain text and
-# does not need to duplicate this logic.
-#
-# Uses Python's built-in html.parser rather than regex. Regex-based HTML
-# stripping is fragile: it breaks on nested tags, self-closing elements,
-# and HTML entities. A proper parser handles all of these correctly.
+# RSS feed content often contains HTML markup. We clean it here so the parser
+# in Step 4 receives plain text and does not need to duplicate this logic.
+# Uses Python's built-in html.parser rather than regex — regex-based HTML
+# stripping breaks on nested tags, self-closing elements, and HTML entities.
 
 class _HTMLTextExtractor(HTMLParser):
     """Collects all text nodes from an HTML string, discarding tags."""
@@ -95,38 +141,105 @@ def _strip_html(raw_html):
 
 
 # ---------------------------------------------------------------------------
-# Funding classification function
+# Signal detectors
 # ---------------------------------------------------------------------------
-# Kept as a self-contained function so it can be replaced by an AI classifier,
-# NLP model, or rule-based scorer in a future milestone without touching the
-# surrounding ingestion pipeline. The rest of fetch_entrackr_articles() calls
-# this function and uses only its return value — it has no knowledge of how
-# the classification works internally.
+# Each detector is a pure function: (title, content) → bool.
+# Detectors are completely independent — changing one does not affect others
+# or the classification engine.
 
-def is_funding_article(title):
-    """
-    Determine whether an article title is a funding announcement.
-
-    Uses whole-word matching via regex word boundaries rather than simple
-    substring matching. This prevents false positives inside unrelated words:
-    for example, "round" will not match "surrounding" or "background",
-    and "backed" will not match "setback".
-
-    re.escape() is used on each keyword so that special characters (e.g. the
-    hyphen in "Pre-Seed") are treated as literals rather than regex operators.
-
-    Args:
-        title (str): The article title to evaluate.
-
-    Returns:
-        (True, matched_keyword)  if a funding keyword is found
-        (False, None)            if no keyword matches
-    """
+def detect_funding_keyword(title, content):
+    """Signal 1: Return True if the article title contains a funding keyword."""
     for keyword in FUNDING_KEYWORDS:
         pattern = r"\b" + re.escape(keyword) + r"\b"
         if re.search(pattern, title, re.IGNORECASE):
-            return True, keyword
-    return False, None
+            return True
+    return False
+
+
+def detect_funding_amount(title, content):
+    """Signal 2: Return True if a funding amount pattern appears in title or content."""
+    text = title + " " + content[:500]
+    for pattern in FUNDING_AMOUNT_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+    return False
+
+
+def detect_investor_phrase(title, content):
+    """Signal 3: Return True if an investor phrase appears in title or content."""
+    text = title + " " + content[:500]
+    for pattern in INVESTOR_PHRASE_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Signal registry
+# ---------------------------------------------------------------------------
+# The classifier iterates this list. Order does not affect the outcome —
+# scores are summed across all signals regardless of order.
+
+SIGNAL_REGISTRY = [
+    ("funding_keyword",  detect_funding_keyword,  3),
+    ("funding_amount",   detect_funding_amount,   2),
+    ("investor_phrase",  detect_investor_phrase,  1),
+]
+
+
+# ---------------------------------------------------------------------------
+# Classification engine
+# ---------------------------------------------------------------------------
+
+def _confidence_label(score):
+    """
+    Map a classifier score to a human-readable label.
+    Used only in verbose validation output — not in classification logic.
+    """
+    if score >= 5:
+        return "Strong"
+    elif score >= ACCEPTANCE_THRESHOLD:
+        return "Moderate"
+    else:
+        return "Weak"
+
+
+def classify_article(title, content):
+    """
+    Evaluate an article against all registered signals and return a
+    structured classification result.
+
+    Each signal is checked independently. The total score is the sum of the
+    weights of all signals that fired. An article is accepted when the score
+    meets or exceeds ACCEPTANCE_THRESHOLD.
+
+    This function is the single point of entry for all classification logic.
+    Replacing it with an AI or NLP classifier requires no changes to the
+    surrounding ingestion pipeline.
+
+    Args:
+        title   (str): Article title.
+        content (str): Plain-text article content (HTML already stripped).
+
+    Returns:
+        dict:
+            accepted (bool) — whether the article meets the threshold
+            score    (int)  — total weighted score across all signals
+            signals  (list) — names of the signals that fired
+    """
+    score = 0
+    matched_signals = []
+
+    for signal_name, detector_fn, weight in SIGNAL_REGISTRY:
+        if detector_fn(title, content):
+            score += weight
+            matched_signals.append(signal_name)
+
+    return {
+        "accepted": score >= ACCEPTANCE_THRESHOLD,
+        "score": score,
+        "signals": matched_signals,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -136,10 +249,10 @@ def is_funding_article(title):
 def fetch_entrackr_articles(verbose=False):
     """
     Fetch articles from the Entrackr RSS feed published in the last 24 hours
-    and return those that match at least one funding keyword.
+    and return those that pass the funding classifier.
 
     Args:
-        verbose (bool): If True, print per-article accept/reject status and a
+        verbose (bool): If True, print per-article classification detail and a
                         validation summary at the end. Intended for development
                         use only — not part of the production pipeline.
 
@@ -155,20 +268,14 @@ def fetch_entrackr_articles(verbose=False):
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
 
-    # Counters used only for the verbose validation summary.
-    count_total = 0
+    count_total    = 0
     count_accepted = 0
     count_rejected = 0
-    count_too_old = 0
-    count_no_date = 0
+    count_too_old  = 0
+    count_no_date  = 0
 
-    # ------------------------------------------------------------------
-    # Step 1: Fetch the raw RSS feed using requests.
-    # Using requests (rather than letting feedparser fetch directly) gives
-    # us reliable timeout control. feedparser's built-in HTTP client does
-    # not support setting a request timeout, which would cause the scraper
-    # to hang indefinitely if Entrackr is slow or unresponsive.
-    # ------------------------------------------------------------------
+    # Fetch raw RSS feed using requests for reliable timeout control.
+    # feedparser's own HTTP client does not support timeouts.
     try:
         response = requests.get(
             ENTRACKR_RSS_URL,
@@ -181,9 +288,6 @@ def fetch_entrackr_articles(verbose=False):
             print(f"[ERROR] Could not fetch RSS feed: {e}")
         return []
 
-    # ------------------------------------------------------------------
-    # Step 2: Parse the fetched content with feedparser.
-    # ------------------------------------------------------------------
     feed = feedparser.parse(response.content)
 
     if not feed.entries:
@@ -191,18 +295,15 @@ def fetch_entrackr_articles(verbose=False):
             print("[INFO] RSS feed returned no entries.")
         return []
 
-    # ------------------------------------------------------------------
-    # Step 3: Filter, clean, and collect matching articles.
-    # ------------------------------------------------------------------
     results = []
-    seen_urls = set()  # tracks URLs already added; guards against duplicate RSS entries
+    seen_urls = set()  # guards against duplicate RSS entries
 
     for entry in feed.entries:
         count_total += 1
         title = entry.get("title", "").strip()
-        url = entry.get("link", "").strip()
+        url   = entry.get("link",  "").strip()
 
-        # Skip entries with no publication date — we cannot place them in time.
+        # Skip entries with no publication date.
         published_parsed = entry.get("published_parsed")
         if not published_parsed:
             count_no_date += 1
@@ -210,7 +311,6 @@ def fetch_entrackr_articles(verbose=False):
                 print(f"[SKIP] No publication date — {title}")
             continue
 
-        # Convert published_parsed (a UTC time.struct_time) to an aware datetime.
         pub_datetime = datetime(*published_parsed[:6], tzinfo=timezone.utc)
 
         # Skip articles older than the lookback window.
@@ -220,48 +320,54 @@ def fetch_entrackr_articles(verbose=False):
                 print(f"[SKIP] Too old ({pub_datetime.date()}) — {title}")
             continue
 
-        # Check the title against the funding keyword list.
-        is_funding, matched_keyword = is_funding_article(title)
-
-        if not is_funding:
-            count_rejected += 1
-            if verbose:
-                print(f"[REJECTED] No funding keyword detected — {title}")
-            continue
-
-        # Deduplicate by URL. RSS feeds occasionally repeat entries (e.g. on
-        # updates or feed regeneration). Only the first occurrence is kept.
-        if url in seen_urls:
-            if verbose:
-                print(f"[SKIP] Duplicate URL — {title}")
-            continue
-        seen_urls.add(url)
-
-        # Extract the best available content from the feed entry,
-        # then strip HTML to deliver clean text to the parser.
+        # Extract and clean content BEFORE classification so that content-based
+        # signals (funding_amount, investor_phrase) have plain text to search.
         raw_html = ""
         if hasattr(entry, "content") and entry.content:
             raw_html = entry.content[0].get("value", "")
         elif entry.get("summary"):
             raw_html = entry.get("summary", "")
 
+        content = _strip_html(raw_html)
+
+        # Run the classification engine.
+        result     = classify_article(title, content)
+        label      = _confidence_label(result["score"])
+        signals_str = ", ".join(result["signals"]) if result["signals"] else "none"
+
+        if not result["accepted"]:
+            count_rejected += 1
+            if verbose:
+                print(f"[REJECTED]")
+                print(f"  Score   : {result['score']}")
+                print(f"  Signals : {signals_str}")
+                print(f"  Title   : {title}\n")
+            continue
+
+        # Deduplicate by URL. Only the first occurrence of each URL is kept.
+        if url in seen_urls:
+            if verbose:
+                print(f"[SKIP] Duplicate URL — {title}")
+            continue
+        seen_urls.add(url)
+
         results.append({
-            "article_title": title,
-            "article_url": url,
+            "article_title":            title,
+            "article_url":              url,
             "article_publication_date": pub_datetime.date().isoformat(),
-            "source_name": SOURCE_NAME,
-            "raw_content": _strip_html(raw_html),
+            "source_name":              SOURCE_NAME,
+            "raw_content":              content,
         })
 
         count_accepted += 1
         if verbose:
-            print(f"[ACCEPTED] Matched keyword '{matched_keyword}' — {title}")
+            print(f"[ACCEPTED — {label}]")
+            print(f"  Score   : {result['score']}")
+            print(f"  Signals : {signals_str}")
+            print(f"  Title   : {title}\n")
 
-    # ------------------------------------------------------------------
-    # Validation summary
-    # ------------------------------------------------------------------
     if verbose:
-        print(f"\n{'─' * 60}")
+        print(f"{'─' * 60}")
         print(f"Validation summary")
         print(f"{'─' * 60}")
         print(f"  RSS entries processed     : {count_total}")
@@ -277,12 +383,12 @@ def fetch_entrackr_articles(verbose=False):
 # ---------------------------------------------------------------------------
 # Manual validation entry point
 # ---------------------------------------------------------------------------
-# Run this file directly to validate the ingestion pipeline:
-#   python3 -m scraper.entrackr
+# python3 -m scraper.entrackr
 
 if __name__ == "__main__":
-    print(f"Fetching articles from: {ENTRACKR_RSS_URL}")
-    print(f"Lookback window: {LOOKBACK_HOURS} hours\n")
+    print(f"Fetching articles from : {ENTRACKR_RSS_URL}")
+    print(f"Lookback window        : {LOOKBACK_HOURS} hours")
+    print(f"Acceptance threshold   : {ACCEPTANCE_THRESHOLD}\n")
 
     articles = fetch_entrackr_articles(verbose=True)
 
