@@ -80,13 +80,44 @@ Supporting modules:
 
 | Module | Status | Description |
 |---|---|---|
-| `scraper/entrackr.py` | Planned | Fetches pages from Entrackr |
-| `scraper/parser.py` | Planned | Parses funding data from HTML |
+| `scraper/entrackr.py` | ✅ Complete | RSS ingestion and multi-signal funding classifier |
+| `scraper/parser.py` | Planned | Parses structured funding data from raw article content |
 | `scraper/database.py` | Planned | Supabase read/write operations |
 | `scraper/logger.py` | Planned | Logging setup |
 | `scraper/utils.py` | Planned | Shared utility functions |
 | `config.py` | Planned | Environment variable loader |
 | `main.py` | Planned | Pipeline entry point |
+
+### `scraper/entrackr.py` — Detail
+
+- Connects to Entrackr's RSS feed (`https://entrackr.com/rss`)
+- Filters articles published within the last 24 hours
+- Passes each article through a multi-signal weighted classifier before returning it
+- Returns a list of dictionaries containing: `article_title`, `article_url`, `article_publication_date`, `source_name`, `raw_content` (HTML stripped)
+- Confidence labels (Strong, Moderate, Weak) are visible in verbose validation output only — they are not included in the returned data
+
+**Signal detectors:**
+
+| Detector | Searches | Weight |
+|---|---|---|
+| `detect_funding_keyword` | Title only | +3 |
+| `detect_funding_amount` | Title + content (first 500 chars) | +2 |
+| `detect_investor_phrase` | Title + content (first 500 chars) | +1 |
+
+**Classifier design:**
+- `SIGNAL_REGISTRY` — a list of `(signal_name, detector_fn, weight)` tuples. Adding a new signal requires only implementing a detector and appending one tuple. Nothing else changes.
+- `classify_article(title, content)` — iterates the registry, sums weights of matched signals, and returns `{accepted, score, signals}`. It has no knowledge of individual signal implementation details.
+- `ACCEPTANCE_THRESHOLD = 3` — a funding keyword alone is sufficient (+3 ≥ 3); a funding amount alone is not (+2 < 3), which prevents revenue-reporting articles from being accepted as funding events.
+
+**Planned future signals:**
+
+| Signal | Description |
+|---|---|
+| Funding round detection | Identify specific round stages (Pre-Seed, Seed, Series A, etc.) |
+| Valuation detection | Detect valuation figures mentioned in articles |
+| Company entity detection | Extract startup names for pre-population |
+| Investor entity detection | Extract investor names for pre-population |
+| AI-based classification | Replace or supplement rule-based signals with an LLM classifier |
 
 ---
 

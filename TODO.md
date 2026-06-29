@@ -4,25 +4,31 @@ Tasks are listed in intended build order.
 
 ---
 
-## In Progress
+## Completed
 
-- [ ] Improve project structure and documentation
+- [x] Initial project setup and structure
+- [x] Project documentation — architecture, changelog, roadmap
+- [x] Supabase schema — `companies` and `funding_events` tables
+- [x] Build Entrackr RSS ingestion module (`scraper/entrackr.py`)
+- [x] Engineering refinement of ingestion module — word-boundary matching, HTML cleaning, deduplication, User-Agent
+- [x] Implement multi-signal funding classifier — `SIGNAL_REGISTRY`, weighted scoring, confidence labels
 
 ---
 
 ## Up Next
 
-- [ ] Build Supabase schema — define tables for funding rounds, companies, investors
-- [ ] Build Entrackr scraper — fetch article listing and individual article pages
-- [ ] Build article parser — extract structured fields from raw HTML
-- [ ] Build database connector — insert and deduplicate records in Supabase
+- [ ] Step 4 — Build article parser — extract structured funding fields from `raw_content`
+- [ ] Step 4 — Address IPO listing false positive edge case detected in Step 3.2 classifier output
+- [ ] Step 5 — Build database connector — insert and deduplicate records in Supabase
+- [ ] Step 5 — Add `confidence_level` column to `funding_events` table in Supabase
 
 ---
 
 ## Backlog
 
-- [ ] Add logging — structured log output to `logs/` with rotation
-- [ ] Add scheduling — run the scraper automatically on a recurring interval
+- [ ] Step 6 — Add logging — structured log output to `logs/` with rotation
+- [ ] Step 7 — Wire `main.py` — connect all modules into a complete end-to-end pipeline
+- [ ] Step 7 — Add scheduling — run the scraper automatically on a daily interval
 - [ ] Add unit tests — cover parser, utils, and database modules
 - [ ] Add support for additional news sources — Inc42, YourStory, VCCircle
 
