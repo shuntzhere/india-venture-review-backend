@@ -291,6 +291,27 @@ _FUNDING_VERBS = [
     "closes", "closed", "gets", "received", "receives", "lands", "landed",
 ]
 
+# Patterns for investor-led titles where the funded company appears after the
+# investor's action rather than before a funding verb.
+# Examples:
+#   "Boundless Ventures leads pre-seed round in Lytmus AI"
+#   "Yash Raj Films makes strategic investment in Rusk Media"
+# Each pattern captures the company name in group 1.
+# [A-Z] anchors the capture to an uppercase-starting word — no re.IGNORECASE
+# is used so that the company name is not confused with lowercase prepositions.
+_INVESTOR_LED_PATTERNS = [
+    # "X leads [round description] in/for Y"
+    r'\bleads\s+.+?\s+(?:in|for)\s+([A-Z][\w\s\.]+?)(?:\s*$|[,\.])',
+    # "X makes [type] investment in Y"
+    r'\bmakes\s+.+?\binvestment\s+in\s+([A-Z][\w\s\.]+?)(?:\s*$|[,\.])',
+    # "X backs Y"
+    r'\bbacks\s+([A-Z][\w\s\.]+?)(?:\s*$|[,\.])',
+    # "X invests in Y"
+    r'\binvests\s+in\s+([A-Z][\w\s\.]+?)(?:\s*$|[,\.])',
+    # "X puts [amount] in Y"
+    r'\bputs\s+.+?\s+in\s+([A-Z][\w\s\.]+?)(?:\s*$|[,\.])',
+]
+
 # Descriptor prefixes that precede the company name and should be stripped.
 _DESCRIPTOR_PREFIX = re.compile(
     r'^(?:'
@@ -308,11 +329,18 @@ _DESCRIPTOR_PREFIX = re.compile(
 
 def _extract_company_name(title):
     """
-    Extract the company name by splitting the article title before the first
-    funding verb. Returns None if the result is unreliable.
+    Extract the company name from an article title.
 
+    Tries two strategies in order:
+    1. Company-led titles — "CompanyX raises/secures/bags..."
+       Split before the funding verb; the subject is the company.
+    2. Investor-led titles — "InvestorX leads round in CompanyY"
+       Extract the company name from after the investor action phrase.
+
+    Returns None if neither strategy produces a reliable result.
     Only explicit title structure is used — no inference or prior knowledge.
     """
+    # --- Strategy 1: company-led titles ---
     for verb in _FUNDING_VERBS:
         pattern = r'^(.+?)\s+\b' + re.escape(verb) + r'\b'
         match = re.match(pattern, title, re.IGNORECASE)
@@ -330,9 +358,18 @@ def _extract_company_name(title):
                 candidate,
                 flags=re.IGNORECASE,
             ).strip()
-            # Reject results that are implausibly short or long
             if 2 <= len(candidate) <= 60:
                 return candidate
+
+    # --- Strategy 2: investor-led titles ---
+    # The funded company appears after the investor's action phrase.
+    for pattern in _INVESTOR_LED_PATTERNS:
+        match = re.search(pattern, title)
+        if match:
+            candidate = match.group(1).strip()
+            if 2 <= len(candidate) <= 60:
+                return candidate
+
     return None
 
 
