@@ -12,15 +12,15 @@ Tasks are listed in intended build order.
 - [x] Build Entrackr RSS ingestion module (`scraper/entrackr.py`)
 - [x] Engineering refinement of ingestion module — word-boundary matching, HTML cleaning, deduplication, User-Agent
 - [x] Implement multi-signal funding classifier — `SIGNAL_REGISTRY`, weighted scoring, confidence labels
+- [x] Build Evidence Extraction Engine — two-stage extraction, domain extractors, progressive evidence collection, validation output
 
 ---
 
 ## Up Next
 
-- [ ] Step 4 — Build article parser — extract structured funding fields from `raw_content`
-- [ ] Step 4 — Address IPO listing false positive edge case detected in Step 3.2 classifier output
-- [ ] Step 5 — Build database connector — insert and deduplicate records in Supabase
-- [ ] Step 5 — Add `confidence_level` column to `funding_events` table in Supabase
+- [ ] Step 5 — Build database connector — insert structured funding records into Supabase
+- [ ] Step 5 — Handle deduplication via `article_url` unique constraint (`INSERT ... ON CONFLICT DO NOTHING`)
+- [ ] Step 5 — Populate both `companies` and `funding_events` tables from structured records
 
 ---
 

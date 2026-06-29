@@ -8,6 +8,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.4.1] - 2026-06-30
+
+### Step 4.1 — Implementation Documentation for Step 4
+- Created `docs/implementation/step-4/04_Evidence_Extraction_Engine.md`
+
+---
+
+## [0.4.0] - 2026-06-30
+
+### Step 4 — Evidence Extraction Engine v1
+- Built `scraper/parser.py` — Evidence Extraction Engine transforming normalized articles into structured funding records
+- Implemented two-stage progressive extraction: Stage 1 (RSS content), Stage 2 (full article, only when primary fields are missing)
+- Implemented four independent domain extractors: Company, Funding, Investors, Metadata
+- Implemented shared extraction utilities: amount parsing, funding round detection, investor phrase matching, valuation extraction
+- Added parser orchestrator coordinating the full extraction lifecycle
+- Added Entrackr source adapter (`normalize_entrackr_article`) — extraction engine never reads source-specific fields directly
+- Added evidence merge: Stage 1 verified values are never overwritten by Stage 2
+- Added per-article validation output with confidence level, evidence source, field counts, and manual review recommendation
+- Added validation summary after all articles are processed
+- Introduced polite 1-second delay between consecutive full-article requests
+- Added `beautifulsoup4==4.12.3` to `requirements.txt` for full-article HTML parsing
+- Validation command: `python3 -m scraper.parser`
+
+---
+
 ## [0.3.3] - 2026-06-29
 
 ### Step 3.3 — Implementation Documentation for Steps 3, 3.1, and 3.2
