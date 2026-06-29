@@ -13,14 +13,17 @@ Tasks are listed in intended build order.
 - [x] Engineering refinement of ingestion module — word-boundary matching, HTML cleaning, deduplication, User-Agent
 - [x] Implement multi-signal funding classifier — `SIGNAL_REGISTRY`, weighted scoring, confidence labels
 - [x] Build Evidence Extraction Engine — two-stage extraction, domain extractors, progressive evidence collection, validation output
+- [x] Build Database Connector — company lookup/creation, funding event insertion, duplicate detection, operational summary
+- [x] Wire `classification_confidence` through full pipeline — classifier → parser → database
+- [x] Improve company name extraction for investor-led titles — "X leads round in Y", "X makes investment in Y", etc.
 
 ---
 
 ## Up Next
 
-- [ ] Step 5 — Build database connector — insert structured funding records into Supabase
-- [ ] Step 5 — Handle deduplication via `article_url` unique constraint (`INSERT ... ON CONFLICT DO NOTHING`)
-- [ ] Step 5 — Populate both `companies` and `funding_events` tables from structured records
+- [ ] Step 6 — Add logging — structured log output to `logs/` with rotation
+- [ ] Step 7 — Wire `main.py` — connect all modules into a complete end-to-end pipeline
+- [ ] Step 7 — Add scheduling — run the scraper automatically on a daily interval
 
 ---
 

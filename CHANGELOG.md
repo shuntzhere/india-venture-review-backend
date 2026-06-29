@@ -8,6 +8,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.5.2] - 2026-06-30
+
+### Step 5.2 — Implementation Documentation for Steps 5 and 5.1
+- Created `docs/implementation/step-5/05_Database_Connector.md`
+- Created `docs/implementation/step-5/05.1_Investor_Led_Title_Extraction.md`
+
+---
+
+## [0.5.1] - 2026-06-30
+
+### Step 5.1 — Improved Company Name Extraction for Investor-Led Titles
+- Added `_INVESTOR_LED_PATTERNS` constant to `scraper/parser.py`
+- Extended `_extract_company_name()` with a two-strategy architecture: existing company-led extraction runs first; investor-led pattern matching runs as fallback
+- Patterns added: "X leads [round] in/for Y", "X makes investment in Y", "X backs Y", "X invests in Y", "X puts [amount] in Y"
+- Fixed: "Boundless Ventures leads pre-seed round in Lytmus AI" → "Lytmus AI"
+- Fixed: "Yash Raj Films makes strategic investment in Rusk Media" → "Rusk Media"
+- All previously working company-led titles continue to extract correctly
+
+---
+
+## [0.5.0] - 2026-06-30
+
+### Step 5 — Database Connector
+- Built `scraper/database.py` — persists structured funding records to Supabase
+- Implemented company lookup by exact name match — existing company records are never overwritten
+- Implemented funding event insertion with pre-check duplicate detection via `article_url`
+- Implemented per-record error handling — one failure never interrupts the remaining pipeline
+- Added operational summary: companies created/reused, events inserted, duplicates skipped, validation failures, database errors, review queue
+- Wired `classification_confidence` through the full pipeline: classifier → article dict → normalized article → structured record → database
+- Added `sql/add_parser_metadata.sql` migration — adds `manual_review_required` (BOOLEAN) and `manual_review_reason` (TEXT) to `funding_events`
+- Updated `config.py` to load `SUPABASE_URL` and `SUPABASE_KEY` from `.env` via `python-dotenv`
+- Added `supabase==2.31.0` and `python-dotenv==1.2.1` to `requirements.txt`
+- Pipeline command: `python3 -m scraper.database`
+
+---
+
 ## [0.4.1] - 2026-06-30
 
 ### Step 4.1 — Implementation Documentation for Step 4
