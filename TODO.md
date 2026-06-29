@@ -16,12 +16,12 @@ Tasks are listed in intended build order.
 - [x] Build Database Connector — company lookup/creation, funding event insertion, duplicate detection, operational summary
 - [x] Wire `classification_confidence` through full pipeline — classifier → parser → database
 - [x] Improve company name extraction for investor-led titles — "X leads round in Y", "X makes investment in Y", etc.
+- [x] Build Logger — structured log files in `logs/`, per-article outcomes, failure reporting, pipeline status determination
 
 ---
 
 ## Up Next
 
-- [ ] Step 6 — Add logging — structured log output to `logs/` with rotation
 - [ ] Step 7 — Wire `main.py` — connect all modules into a complete end-to-end pipeline
 - [ ] Step 7 — Add scheduling — run the scraper automatically on a daily interval
 
@@ -29,7 +29,6 @@ Tasks are listed in intended build order.
 
 ## Backlog
 
-- [ ] Step 6 — Add logging — structured log output to `logs/` with rotation
 - [ ] Step 7 — Wire `main.py` — connect all modules into a complete end-to-end pipeline
 - [ ] Step 7 — Add scheduling — run the scraper automatically on a daily interval
 - [ ] Add unit tests — cover parser, utils, and database modules

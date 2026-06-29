@@ -8,6 +8,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.6.1] - 2026-06-30
+
+### Step 6.1 — Implementation Documentation for Step 6
+- Created `docs/implementation/step-6/06_Logger.md`
+
+---
+
+## [0.6.0] - 2026-06-30
+
+### Step 6 — Logger
+- Built `scraper/logger.py` — structured logging system recording every pipeline execution to `logs/`
+- Implemented `write_log()` — writes a human-readable log file; never raises, pipeline is never blocked by a logging failure
+- Log file naming convention: `logs/YYYY-MM-DD.log`, incrementing to `-1`, `-2`, etc. when the pipeline runs more than once on the same day
+- Each log captures: run metadata (Run ID, start/end time, total execution time, pipeline status), configuration snapshot (RSS source, lookback window, classifier threshold), software version (git commit hash, parser version, database connector version), pipeline statistics, per-article outcome log, and failure details with suggested actions
+- Run ID formatted as `IVR-YYYYMMDD-HHMM` — every run uniquely identifiable without additional tooling
+- Pipeline status determination: `SUCCESS` (no failures), `PARTIAL_SUCCESS` (one or more article-level failures), `FAILED` (system-level error preventing pipeline completion)
+- Failure reporting: each failed article recorded with company name, URL, reason, and suggested action from the error classification table
+- Extended `persist_funding_records()` in `scraper/database.py` to return per-article outcome dicts alongside aggregate stats — consumed by the logger to build the ARTICLE LOG and FAILURES sections
+- Validation command: `python3 -m scraper.logger`
+
+---
+
 ## [0.5.2] - 2026-06-30
 
 ### Step 5.2 — Implementation Documentation for Steps 5 and 5.1
