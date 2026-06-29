@@ -202,10 +202,23 @@ def persist_funding_records(results):
         "review_queue":        0,
     }
 
+    # Per-article outcomes — consumed by the logger to build the ARTICLE LOG and
+    # FAILURES sections. Each entry contains enough context to diagnose issues
+    # without re-running the pipeline.
+    article_log = []
+
     for record, report in results:
         if record is None:
             # The extraction engine returned no record (complete pipeline failure).
             stats["validation_failures"] += 1
+            article_log.append({
+                "outcome":      "validation_failure",
+                "title":        None,
+                "url":          None,
+                "confidence":   None,
+                "company_name": None,
+                "reason":       "Extraction engine returned no record",
+            })
             continue
 
         # --- Persistence validation ---
@@ -213,8 +226,17 @@ def persist_funding_records(results):
         if missing:
             stats["validation_failures"] += 1
             url_label = record.get("article_url") or "unknown URL"
+            reason = f"Missing required fields: {', '.join(missing)}"
             print(f"  [SKIP — Validation] {url_label}")
-            print(f"    Missing required fields: {', '.join(missing)}")
+            print(f"    {reason}")
+            article_log.append({
+                "outcome":      "validation_failure",
+                "title":        record.get("article_title"),
+                "url":          record.get("article_url"),
+                "confidence":   record.get("classification_confidence"),
+                "company_name": record.get("company_name"),
+                "reason":       reason,
+            })
             continue
 
         article_url  = record["article_url"]
@@ -225,6 +247,14 @@ def persist_funding_records(results):
             if _article_exists(client, article_url):
                 stats["duplicates_skipped"] += 1
                 print(f"  [SKIP — Duplicate] {record.get('article_title', article_url)}")
+                article_log.append({
+                    "outcome":      "duplicate",
+                    "title":        record.get("article_title"),
+                    "url":          article_url,
+                    "confidence":   record.get("classification_confidence"),
+                    "company_name": company_name,
+                    "reason":       None,
+                })
                 continue
 
             # --- Company lookup or creation ---
@@ -248,6 +278,14 @@ def persist_funding_records(results):
             confidence = record.get("classification_confidence", "")
             review_flag = " ← review" if report.get("requires_manual_review") else ""
             print(f"  [INSERTED — {confidence}] {title}{review_flag}")
+            article_log.append({
+                "outcome":      "inserted",
+                "title":        title,
+                "url":          article_url,
+                "confidence":   confidence,
+                "company_name": company_name,
+                "reason":       None,
+            })
 
         except Exception as e:
             error_str = str(e)
@@ -256,12 +294,28 @@ def persist_funding_records(results):
             if "duplicate" in error_str.lower() or "unique" in error_str.lower():
                 stats["duplicates_skipped"] += 1
                 print(f"  [SKIP — Duplicate] {record.get('article_title', article_url)}")
+                article_log.append({
+                    "outcome":      "duplicate",
+                    "title":        record.get("article_title"),
+                    "url":          article_url,
+                    "confidence":   record.get("classification_confidence"),
+                    "company_name": company_name,
+                    "reason":       None,
+                })
             else:
                 stats["database_errors"] += 1
                 print(f"  [ERROR] {record.get('article_title', article_url)}")
                 print(f"    {error_str}")
+                article_log.append({
+                    "outcome":      "database_error",
+                    "title":        record.get("article_title"),
+                    "url":          article_url,
+                    "confidence":   record.get("classification_confidence"),
+                    "company_name": company_name,
+                    "reason":       error_str,
+                })
 
-    return stats
+    return {"stats": stats, "article_log": article_log}
 
 
 # ---------------------------------------------------------------------------
@@ -299,7 +353,8 @@ if __name__ == "__main__":
     # --- Stage 3: Database persistence ---
     print("Stage 3  Persisting to Supabase...")
     print()
-    stats = persist_funding_records(results)
+    db_result = persist_funding_records(results)
+    stats = db_result["stats"]
     print()
 
     # --- Operational summary ---
