@@ -357,6 +357,7 @@ def fetch_entrackr_articles(verbose=False):
             "article_publication_date": pub_datetime.date().isoformat(),
             "source_name":              SOURCE_NAME,
             "raw_content":              content,
+            "classification_confidence": label,
         })
 
         count_accepted += 1

@@ -480,10 +480,11 @@ def extract_metadata_fields(normalized_article):
     Metadata is always available; no extraction logic is applied.
     """
     return {
-        "article_title":            normalized_article.get("article_title", ""),
-        "article_url":              normalized_article.get("article_url", ""),
-        "article_publication_date": normalized_article.get("article_publication_date", ""),
-        "source_name":              normalized_article.get("source_name", ""),
+        "article_title":             normalized_article.get("article_title", ""),
+        "article_url":               normalized_article.get("article_url", ""),
+        "article_publication_date":  normalized_article.get("article_publication_date", ""),
+        "source_name":               normalized_article.get("source_name", ""),
+        "classification_confidence": normalized_article.get("classification_confidence"),
     }
 
 
@@ -738,11 +739,12 @@ def normalize_entrackr_article(entrackr_article):
     Future source adapters produce the same normalized format independently.
     """
     return {
-        "article_title":            entrackr_article.get("article_title", ""),
-        "article_url":              entrackr_article.get("article_url", ""),
-        "article_publication_date": entrackr_article.get("article_publication_date", ""),
-        "source_name":              entrackr_article.get("source_name", ""),
-        "raw_content":              entrackr_article.get("raw_content", ""),
+        "article_title":             entrackr_article.get("article_title", ""),
+        "article_url":               entrackr_article.get("article_url", ""),
+        "article_publication_date":  entrackr_article.get("article_publication_date", ""),
+        "source_name":               entrackr_article.get("source_name", ""),
+        "raw_content":               entrackr_article.get("raw_content", ""),
+        "classification_confidence": entrackr_article.get("classification_confidence"),
     }
 
 
