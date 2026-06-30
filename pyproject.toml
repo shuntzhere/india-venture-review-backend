@@ -1,2 +1,14 @@
+[project]
+name = "india-venture-review"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = [
+    "requests==2.32.3",
+    "feedparser==6.0.11",
+    "beautifulsoup4==4.12.3",
+    "supabase==2.31.0",
+    "python-dotenv==1.2.1",
+]
+
 [tool.vercel]
 entrypoint = "api.run:handler"
