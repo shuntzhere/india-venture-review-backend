@@ -17,20 +17,19 @@ Tasks are listed in intended build order.
 - [x] Wire `classification_confidence` through full pipeline — classifier → parser → database
 - [x] Improve company name extraction for investor-led titles — "X leads round in Y", "X makes investment in Y", etc.
 - [x] Build Logger — structured log files in `logs/`, per-article outcomes, failure reporting, pipeline status determination
+- [x] Wire `main.py` — single entry point running the complete pipeline with `python main.py`
+- [x] Configure launchd scheduler — automated daily run at 7:00 AM IST via macOS LaunchAgent
 
 ---
 
 ## Up Next
 
-- [ ] Step 7 — Wire `main.py` — connect all modules into a complete end-to-end pipeline
-- [ ] Step 7 — Add scheduling — run the scraper automatically on a daily interval
+MVP complete. The pipeline runs automatically every morning.
 
 ---
 
 ## Backlog
 
-- [ ] Step 7 — Wire `main.py` — connect all modules into a complete end-to-end pipeline
-- [ ] Step 7 — Add scheduling — run the scraper automatically on a daily interval
 - [ ] Add unit tests — cover parser, utils, and database modules
 - [ ] Add support for additional news sources — Inc42, YourStory, VCCircle
 

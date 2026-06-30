@@ -8,6 +8,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.7.1] - 2026-06-30
+
+### Step 7.1 — Implementation Documentation for Step 7
+- Created `docs/implementation/step-7/07_Main_And_Scheduler.md`
+
+---
+
+## [0.7.0] - 2026-06-30
+
+### Step 7 — Main Application and Scheduler
+- Implemented `main.py` — single entry point wiring all pipeline modules in sequence
+- Pipeline executes with one command: `python main.py`
+- Prints startup banner with run ID (`IVR-YYYYMMDD-HHMM`) and completion banner with status and log path
+- Handles catastrophic Stage 3 failures: logs FAILED status, prints failure reason, exits cleanly
+- Configured macOS launchd to run the pipeline automatically every day at 7:00 AM IST
+- Created `~/Library/LaunchAgents/com.indiaventurereview.pipeline.plist` — points to `.venv` Python interpreter, sets working directory, redirects stdout/stderr to `logs/launchd-stdout.log` and `logs/launchd-stderr.log`
+- `RunAtLoad: false` — first automated run is the next morning; loading the agent does not trigger an immediate run
+- LaunchAgent loaded and verified: `launchctl list | grep indiaventurereview`
+
+---
+
 ## [0.6.1] - 2026-06-30
 
 ### Step 6.1 — Implementation Documentation for Step 6
