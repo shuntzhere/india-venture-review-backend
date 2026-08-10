@@ -1,6 +1,6 @@
 # India Venture Review — Backend
 
-The data pipeline powering [India Venture Review](https://github.com/shuntzhere/india-venture-review-frontend) — an automated scraper that pulls Indian startup funding news, classifies it, and stores structured records in Supabase.
+The data pipeline powering [indiaventurereview.com](https://indiaventurereview.com) — an automated scraper that pulls Indian startup funding news, classifies it, and stores structured records in Supabase.
 
 ---
 
