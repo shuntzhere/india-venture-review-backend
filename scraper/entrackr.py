@@ -4,8 +4,10 @@
 import re
 import requests
 import feedparser
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
+from typing import List, Optional
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -28,8 +30,18 @@ FEED_TIMEOUT_SECONDS = 10
 # unidentified requests less reliably, and a descriptive label makes our
 # traffic identifiable in server logs.
 HTTP_HEADERS = {
-    "User-Agent": "IndiaVentureReview/1.0 (+https://github.com/shuntzhere/india-venture-review)"
+    "User-Agent": "IndiaVentureReview/1.0 (+https://github.com/shuntzhere/india-venture-review-backend)"
 }
+
+
+@dataclass
+class FetchResult:
+    """Outcome of one RSS source attempt, including an explicit failure state."""
+
+    source_name: str
+    articles: List[dict]
+    entries_fetched: int
+    error: Optional[str] = None
 
 # ---------------------------------------------------------------------------
 # Signal 1 — Funding keywords
@@ -44,12 +56,21 @@ FUNDING_KEYWORDS = [
     "secures",
     "bags",        # common in Indian startup reporting ("bags Rs 10 Cr seed round")
     "round",
-    "backed",
     "Series",
     "Seed",
     "Pre-Seed",
     "venture",
 ]
+
+# A completed strategic investment can be reported without the usual funding
+# verbs. Keep this title structure strict so generic investment commentary is
+# not admitted as startup funding.
+COMPLETED_STRATEGIC_INVESTMENT_PATTERN = (
+    r"^[A-Z][A-Za-z0-9& .'-]{1,60}?\s+\bcloses\b\s+"
+    r"[A-Z][A-Za-z0-9& .'-]{1,80}['’]s\s+"
+    r"(?:\$|Rs\.?|₹|USD|INR)\s*[\d,]+(?:\.\d+)?\s*"
+    r"(?:Mn|Bn|M|B|Cr|crore|million|billion)?\s+strategic\s+investment\b"
+)
 
 # ---------------------------------------------------------------------------
 # Signal 2 — Funding amount patterns
@@ -81,6 +102,54 @@ INVESTOR_PHRASE_PATTERNS = [
     r'\bbacked\s+by\b',
     r'\bfrom\s+investors\b',
     r'\bparticipated\s+by\b',
+]
+
+# These are financial events, but not startup/company funding rounds. Keep the
+# exclusions structural so they do not depend on individual company names.
+#
+# They intentionally apply to the headline only. Article bodies routinely
+# mention prior IPOs, acquisitions, and fund closes as context, which must not
+# change the event represented by the article itself.
+NON_COMPANY_FUNDING_PATTERNS = [
+    (r'\b(?:weekly funding report|funding and acquisitions.*this week)\b',
+     "funding roundup"),
+    (r'\b(?:raises?|raised)\b[^.]{0,100}\b(?:price\s+)?target\s+to\b',
+     "analyst price-target change"),
+    (r'\b(?:ventures|capital|partners|asset(?:\s+management)?)\b[^.]{0,100}'
+     r'\bannounces?\s+(?:its\s+)?(?:first|final)\s+close\b',
+     "VC or fund-manager fundraise"),
+    (r'\b(?:launches?|launched)\b[^.]{0,100}\b(?:venture\s+)?fund\b',
+     "VC or fund-manager fundraise"),
+    (r'\b(?:raises?|raised|closes?|closed)\b[^.]{0,100}\bcorpus\b',
+     "VC or fund-manager fundraise"),
+    (r'\b(?:closes?|closed)\b[^.]{0,100}\bfund\b',
+     "VC or fund-manager fundraise"),
+    (r'\b(?:raises?|raised)\s+(?:\$|Rs\.?|₹|USD|INR)\s*[\d,]+(?:\.\d+)?\s*'
+     r'(?:Mn|Bn|M|B|Cr|crore|million|billion)?\s+(?!from\b|led\b|backed\b)'
+     r'(?:[A-Za-z-]+\s+){0,4}fund\b', "VC or fund-manager fundraise"),
+    (r'\b(?:closes?|closed)\s+[^.]{0,100}\b(?:I|II|III|IV|V)\b',
+     "venture-fund close"),
+    (r'\bfund\s+(?:I|II|III|IV|V)\b[^.]{0,120}'
+     r'\b(?:secures?|raises?|closes?|closed)\b[^.]{0,120}'
+     r'\b(?:first|final)\s+close\b',
+     "venture-fund close"),
+    # A bare "IPO" is often only context for a private round ("raises ahead
+    # of IPO"). Restrict this exclusion to an actual public-market mechanism.
+    (r'\b(?:files?|filed)\s+(?:a\s+)?(?:drhp|udrhp|draft\s+red\s+herring\s+prospectus)\b'
+     r'|\b(?:fresh issue|offer for sale|\bofs\b|anchor investors?)\b'
+     r'|\b(?:ipo|initial\s+public\s+offering)\b[^.]{0,100}\b(?:subscription|subscribed|listing|lists?|listed|debut|price\s+band|allotment|opens?|closes?|fresh issue|offer for sale|to\s+raise|raises?)\b'
+     r'|\b(?:shares?|stock)\b[^.]{0,50}\b(?:debut|listing|lists?|listed)\b'
+     r'|\b(?:debut|listing|lists?|listed)\b[^.]{0,50}\b(?:premium|shares?|stock)\b',
+     "IPO or public-markets fundraising"),
+    (r'\b(?:acquisition|acquires?|acquired|block deals?|secondary stake|stake sale|offload(?:s|ed)?)\b',
+     "acquisition or secondary-market transaction"),
+    (r'\b(?:sells?|to\s+sell)\b.{0,100}\bstake\b',
+     "acquisition or secondary-market transaction"),
+    (r'\b(?:gst\s+council|tax|prosecution|penalty|arrest)\b[^.]{0,120}'
+     r'\b(?:threshold|powers?|provisions?|compliance)\b'
+     r'|\braises?\b[^.]{0,80}\bthreshold\s+to\s+'
+     r'(?:\$|Rs\.?|₹|USD|INR)\s*[\d,]+',
+     "regulatory or legal threshold"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -149,6 +218,8 @@ def _strip_html(raw_html):
 
 def detect_funding_keyword(title, content):
     """Signal 1: Return True if the article title contains a funding keyword."""
+    if re.search(COMPLETED_STRATEGIC_INVESTMENT_PATTERN, title):
+        return True
     for keyword in FUNDING_KEYWORDS:
         pattern = r"\b" + re.escape(keyword) + r"\b"
         if re.search(pattern, title, re.IGNORECASE):
@@ -227,6 +298,15 @@ def classify_article(title, content):
             score    (int)  — total weighted score across all signals
             signals  (list) — names of the signals that fired
     """
+    for pattern, reason in NON_COMPANY_FUNDING_PATTERNS:
+        if re.search(pattern, title, re.IGNORECASE):
+            return {
+                "accepted": False,
+                "score": 0,
+                "signals": [],
+                "rejection_reason": reason,
+            }
+
     score = 0
     matched_signals = []
 
@@ -239,6 +319,7 @@ def classify_article(title, content):
         "accepted": score >= ACCEPTANCE_THRESHOLD,
         "score": score,
         "signals": matched_signals,
+        "rejection_reason": None,
     }
 
 
@@ -246,7 +327,7 @@ def classify_article(title, content):
 # Main ingestion function
 # ---------------------------------------------------------------------------
 
-def fetch_entrackr_articles(verbose=False):
+def fetch_entrackr_result(verbose=False, *, lookback_hours=LOOKBACK_HOURS):
     """
     Fetch articles from the Entrackr RSS feed published in the last 24 hours
     and return those that pass the funding classifier.
@@ -263,10 +344,12 @@ def fetch_entrackr_articles(verbose=False):
             article_publication_date  (ISO format string: YYYY-MM-DD)
             source_name
             raw_content               (plain text, HTML stripped)
-        Returns an empty list if the feed is unavailable or no articles match.
+        FetchResult whose error is populated when the source could not be read.
     """
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
+    if not 1 <= lookback_hours <= 168:
+        raise ValueError("lookback_hours must be between 1 and 168")
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
 
     count_total    = 0
     count_accepted = 0
@@ -286,14 +369,19 @@ def fetch_entrackr_articles(verbose=False):
     except requests.RequestException as e:
         if verbose:
             print(f"[ERROR] Could not fetch RSS feed: {e}")
-        return []
+        return FetchResult(
+            source_name=SOURCE_NAME,
+            articles=[],
+            entries_fetched=0,
+            error=f"Could not fetch RSS feed: {e}",
+        )
 
     feed = feedparser.parse(response.content)
 
     if not feed.entries:
         if verbose:
             print("[INFO] RSS feed returned no entries.")
-        return []
+        return FetchResult(SOURCE_NAME, [], 0)
 
     results = []
     seen_urls = set()  # guards against duplicate RSS entries
@@ -378,7 +466,16 @@ def fetch_entrackr_articles(verbose=False):
         print(f"  Skipped (no date)         : {count_no_date}")
         print(f"{'─' * 60}")
 
-    return results
+    return FetchResult(SOURCE_NAME, results, count_total)
+
+
+def fetch_entrackr_articles(verbose=False):
+    """Return accepted Entrackr articles for legacy local entry points.
+
+    Hosted orchestration must use ``fetch_entrackr_result`` so a source outage
+    cannot be mistaken for a legitimate empty feed.
+    """
+    return fetch_entrackr_result(verbose=verbose).articles
 
 
 # ---------------------------------------------------------------------------

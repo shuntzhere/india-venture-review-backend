@@ -4,6 +4,14 @@ Tasks are listed in intended build order.
 
 ---
 
+## Backup activation
+
+- [x] Build and verify the independent runner and protected environment
+- [x] Recover the 18–21 November missed funding events, including the partial 18th
+- [ ] Approve credential provisioning to the GitHub backup environment
+- [ ] Merge release and verify GitHub dispatch and next scheduled execution
+- [ ] Verify GitHub failed-workflow notification settings
+
 ## Completed
 
 - [x] Initial project setup and structure
