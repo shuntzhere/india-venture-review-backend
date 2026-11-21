@@ -8,9 +8,10 @@ Tasks are listed in intended build order.
 
 - [x] Build and verify the independent runner and protected environment
 - [x] Recover the 18–21 November missed funding events, including the partial 18th
-- [ ] Approve credential provisioning to the GitHub backup environment
-- [ ] Merge release and verify GitHub dispatch and next scheduled execution
-- [ ] Verify GitHub failed-workflow notification settings
+- [x] Approve and complete encrypted credential provisioning to the GitHub backup environment
+- [x] Merge release and verify read-only and normal GitHub dispatches
+- [ ] Observe the next scheduled backup execution (22 November, 13:47 IST)
+- [x] Verify GitHub failed-workflow email notifications are enabled
 
 ## Completed
 

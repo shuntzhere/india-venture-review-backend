@@ -6,6 +6,30 @@ at 13:47, 15:47 and 19:47 IST, after the primary's 11:30 IST schedule.
 GitHub schedules are best effort. Public repository schedules can be disabled
 following 60 days without repository activity.
 
+## Activation verified — 22 November 2026 IST
+
+PR #1 was merged. SUPABASE_URL and SUPABASE_KEY are stored only as encrypted
+secrets in environment ivr-ingestion-backup, restricted to main. Both GitHub
+manual dispatches passed: the read-only check and normal execution. Normal mode
+returned SKIPPED_FRESH because a daily SUCCESS already existed. Workflow state
+is active; the next scheduled check is 22 November at 13:47 IST. Scheduled
+execution itself has not yet been observed. Failure-only email notifications
+were already enabled in the owner's GitHub settings.
+
+- Read-only run: https://github.com/shuntzhere/india-venture-review-backend/actions/runs/44944951677
+- Normal-mode run: https://github.com/shuntzhere/india-venture-review-backend/actions/runs/44945096734
+
+Outage recovery covered 18–21 November: eight events and their eight source
+links were read back from production. Three were late announcements on the
+18th; five were on the 19th. The 20th's financial-results story and 21st's weekly
+roundup were excluded by the funding-only rules. One recovered event retains
+its parser-generated manual-review flag.
+
+Maintenance: the pinned checkout/setup-python Actions currently emit a Node 20
+deprecation warning while GitHub runs them using Node 24 compatibility. Both
+verified runs succeeded. Update those pins in a separate tested maintenance
+change; do not change working pipeline dependencies during activation.
+
 ## Safeguards
 
 - Only a completed SUCCESS started since the most recent 06:00 UTC primary
