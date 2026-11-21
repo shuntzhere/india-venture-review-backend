@@ -9,6 +9,8 @@ All notable changes to this project are documented here.
 - Added additive run-history metrics migration and recorded production installation.
 - Pinned workflow Actions and dependency hashes; prepared a main-only environment.
 - Verified 74 tests and a controlled production run; recovered five missing events.
+- Extended outage recovery to the partial day of 18 November, adding three late
+  announcements for eight recovered events total.
 - Automatic scheduling remains pending credential approval and release activation.
 
 
