@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here.
 
+## [1.0.1-backup.1] - 2026-11-22
+
+- Added independent GitHub Actions funding ingestion with durable freshness checks,
+  shared locking, bounded runtime and verified completion.
+- Added additive run-history metrics migration and recorded production installation.
+- Pinned workflow Actions and dependency hashes; prepared a main-only environment.
+- Verified 74 tests and a controlled production run; recovered five missing events.
+- Automatic scheduling remains pending credential approval and release activation.
+
+
+
 ---
 
 ## [Unreleased]
